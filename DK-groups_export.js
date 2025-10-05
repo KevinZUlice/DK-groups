@@ -155,15 +155,33 @@
   wrap.querySelectorAll('input[name="dkout"]').forEach(r => r.addEventListener('change', e => fill(e.target.value)));
 
   wrap.querySelector('.dkg-copy').addEventListener('click', async () => {
-    try {
-      if (navigator.clipboard && window.isSecureContext) await navigator.clipboard.writeText(ta.value);
-      else { ta.select(); document.execCommand('copy'); ta.setSelectionRange(0,0); }
-      const btn = wrap.querySelector('.dkg-copy'); const old = btn.textContent;
-      btn.textContent = 'Zkopírováno ✓'; setTimeout(()=>btn.textContent=old, 1200);
-    } catch {
-      alert('Nepodařilo se zkopírovat. Zkopíruj ručně (Ctrl+C).');
+  const text = ta.value; // prostý text, každá vesnice na novém řádku
+  const btn = wrap.querySelector('.dkg-copy');
+  const old = btn.textContent;
+
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      // primární cesta – vloží čistý text do schránky
+      await navigator.clipboard.writeText(text);
+    } else {
+      // fallback – dočasné textarea, select + copy
+      const tmp = document.createElement('textarea');
+      tmp.value = text;
+      tmp.setAttribute('readonly', '');
+      tmp.style.position = 'fixed';
+      tmp.style.opacity = '0';
+      document.body.appendChild(tmp);
+      tmp.select();
+      document.execCommand('copy');
+      document.body.removeChild(tmp);
     }
-  });
+    btn.textContent = 'Zkopírováno ✓';
+    setTimeout(() => (btn.textContent = old), 1200);
+  } catch (err) {
+    alert('Nepodařilo se zkopírovat. Zkopíruj ručně (Ctrl+C).');
+  }
+});
+
 
   wrap.querySelector('.dkg-close').onclick = () => wrap.remove();
   wrap.querySelector('.dkg-backdrop').onclick = () => wrap.remove();
