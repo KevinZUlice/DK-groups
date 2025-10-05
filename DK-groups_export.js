@@ -41,7 +41,8 @@
   const listOFF  = [];
   const keyOf = v => v.village_id || `${v.coords.x}|${v.coords.y}`;
 
-  const toLine = (v) => {
+  // ---- řádek pro DC (prostý text)
+  const toLineDC = (v) => {
     const groupsStr = (v.groups && v.groups.length) ? ` — ${v.groups.join(', ')}` : '';
     return `${v.coords.x}|${v.coords.y} — ${v.name} — [url=${v.send_link}]Send[/url]${groupsStr}`;
   };
@@ -52,13 +53,15 @@
 
     const nameText = norm(nameCell?.textContent || '');
     const coords   = parseCoords(nameText);
-    if (!coords) continue;
+    if (!coords) continue; // ochrana
 
     const village_id = getVillageIdFromHref(nameCell || row) || row.getAttribute('data-id') || null;
     const nameOnly = nameText.replace(/\s*\(\d{2,3}\|\d{2,3}\)\s*K\d{2}\s*$/,'').trim();
-    const send_link = (village_id) ? `game.php?village=${village_id}&screen=place&x=${coords.x}&y=${coords.y}` : `game.php?screen=place&x=${coords.x}&y=${coords.y}`;
+    const send_link = (village_id)
+      ? `game.php?village=${village_id}&screen=place&x=${coords.x}&y=${coords.y}`
+      : `game.php?screen=place&x=${coords.x}&y=${coords.y}`;
 
-    // Seber všechny štítky skupin (např. "DEFF", "OFF", "Nebezpečí", …)
+    // Skupiny: např. "DEFF; Nebezpečí; OFF"
     const groups = norm(groupsCell?.textContent || '')
       .split(';')
       .map(t => norm(t))
@@ -79,11 +82,11 @@
   const unmarked = all.filter(v => !markedMap.has(keyOf(v)));
   const unmarkedCount = unmarked.length;
 
-  // ===== 2) TEXTY PRO FILTRY (čisté řádky bez hlaviček/bulletů) =====
-  const txtALL  = all.map(toLine).join('\n');
-  const txtDEFF = listDEFF.map(toLine).join('\n');
-  const txtOFF  = listOFF.map(toLine).join('\n');
-  const txtMISS = unmarked.map(toLine).join('\n');
+  // ===== 2) Předpřipravené texty (bez hlaviček – čisté řádky)
+  const txtALL  = all.map(toLineDC).join('\n');
+  const txtDEFF = listDEFF.map(toLineDC).join('\n');
+  const txtOFF  = listOFF.map(toLineDC).join('\n');
+  const txtMISS = unmarked.map(toLineDC).join('\n');
 
   // ===== 3) POPUP =====
   const OLD = document.getElementById('dk-groups-popup'); if (OLD) OLD.remove();
@@ -109,7 +112,7 @@
       <label><input type="radio" name="dkout" value="deff"> Jen DEFF</label>
       <label><input type="radio" name="dkout" value="off"> Jen OFF</label>
       <label><input type="radio" name="dkout" value="miss"> Jen Neoznačené</label>
-      <button class="dkg-copy">Zkopírovat</button>
+      <button class="dkg-copy-dc" title="Zkopírovat čistý text pro Discord">Zkopírovat pro DC</button>
     </div>
 
     <textarea class="dkg-ta" spellcheck="false"></textarea>
@@ -131,7 +134,7 @@
   .badge.deff{background:#e9f8ef;border-color:#cdebd8}.badge.off{background:#e9f1fb;border-color:#cddaf6}.badge.miss{background:#fdecec;border-color:#fac9c9}
   .dkg-toolbar{display:flex;gap:14px;align-items:center;padding:8px 12px;border-bottom:1px solid #f0f0f0}
   .dkg-toolbar label{display:flex;align-items:center;gap:6px;cursor:pointer}
-  .dkg-copy{margin-left:auto;padding:6px 12px;border:0;border-radius:8px;cursor:pointer;background:#2d7;color:#fff;font-weight:600}
+  .dkg-copy-dc{margin-left:auto;padding:6px 12px;border:0;border-radius:8px;cursor:pointer;background:#2d7;color:#fff;font-weight:600}
   .dkg-ta{flex:1;margin:12px;resize:none;border:1px solid #ddd;border-radius:8px;padding:10px;white-space:pre;font-family:Consolas,monospace}
   .dkg-footer{padding:6px 12px;border-top:1px solid #eee;color:#666}
   `;
@@ -140,49 +143,57 @@
   // ===== 4) Naplnění + počítadlo =====
   const ta  = wrap.querySelector('.dkg-ta');
   const cnt = wrap.querySelector('.dkg-count');
-  const countLines = txt => txt.split('\n').filter(l => l.trim().length>0).length;
+  const currentMode = () => (wrap.querySelector('input[name="dkout"]:checked')?.value || 'all');
+
+  const getTextForMode = (mode) => {
+    if (mode === 'deff') return txtDEFF;
+    if (mode === 'off')  return txtOFF;
+    if (mode === 'miss') return txtMISS;
+    return txtALL;
+  };
 
   const fill = (mode) => {
-    let txt = txtALL;
-    if (mode === 'deff') txt = txtDEFF;
-    else if (mode === 'off') txt = txtOFF;
-    else if (mode === 'miss') txt = txtMISS;
+    const txt = getTextForMode(mode);
     ta.value = txt;
-    cnt.textContent = String(countLines(txt));
+    cnt.textContent = String(txt.split('\n').filter(l => l.trim().length>0).length);
   };
   fill('all');
 
   wrap.querySelectorAll('input[name="dkout"]').forEach(r => r.addEventListener('change', e => fill(e.target.value)));
 
-  wrap.querySelector('.dkg-copy').addEventListener('click', async () => {
-  const text = ta.value; // prostý text, každá vesnice na novém řádku
-  const btn = wrap.querySelector('.dkg-copy');
-  const old = btn.textContent;
-
-  try {
+  // ===== 5) Kopírovat pro DC (prostý text) =====
+  const copyPlain = async (text) => {
     if (navigator.clipboard && window.isSecureContext) {
-      // primární cesta – vloží čistý text do schránky
       await navigator.clipboard.writeText(text);
-    } else {
-      // fallback – dočasné textarea, select + copy
-      const tmp = document.createElement('textarea');
-      tmp.value = text;
-      tmp.setAttribute('readonly', '');
-      tmp.style.position = 'fixed';
-      tmp.style.opacity = '0';
-      document.body.appendChild(tmp);
-      tmp.select();
-      document.execCommand('copy');
-      document.body.removeChild(tmp);
+      return;
     }
-    btn.textContent = 'Zkopírováno ✓';
-    setTimeout(() => (btn.textContent = old), 1200);
-  } catch (err) {
-    alert('Nepodařilo se zkopírovat. Zkopíruj ručně (Ctrl+C).');
-  }
-});
+    // Fallback
+    const tmp = document.createElement('textarea');
+    tmp.value = text;
+    tmp.setAttribute('readonly','');
+    tmp.style.position='fixed';
+    tmp.style.opacity='0';
+    document.body.appendChild(tmp);
+    tmp.select();
+    document.execCommand('copy');
+    document.body.removeChild(tmp);
+  };
 
+  wrap.querySelector('.dkg-copy-dc').addEventListener('click', async () => {
+    const btn = wrap.querySelector('.dkg-copy-dc');
+    const old = btn.textContent;
+    try {
+      const text = getTextForMode(currentMode()); // jistota – vždy čerstvě podle filtru
+      await copyPlain(text);
+      btn.textContent = 'Zkopírováno ✓';
+    } catch {
+      alert('Nepodařilo se zkopírovat. Zkopíruj ručně (Ctrl+C).');
+    } finally {
+      setTimeout(() => (btn.textContent = old), 1200);
+    }
+  });
 
   wrap.querySelector('.dkg-close').onclick = () => wrap.remove();
   wrap.querySelector('.dkg-backdrop').onclick = () => wrap.remove();
 })();
+
