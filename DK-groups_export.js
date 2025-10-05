@@ -1,4 +1,7 @@
 (() => {
+  // --- VERSION MARK ---
+  const __DK_GROUPS_VER__ = '2025-10-05 DC-format v3';
+
   // ===== 0) AUTONAVIGACE =====
   const usp = new URLSearchParams(location.search);
   const onTarget =
@@ -18,7 +21,7 @@
 
   // ===== 1) PARSE (jen skutečné vesnice – musí mít souřadnice) =====
   const sel = { rows:'table.vis tbody tr', name:'td:nth-child(1)', groups:'td:nth-child(5)' };
-  const norm = s => (s||'').replace(/\s+/g,' ').trim();
+  const norm  = s => (s||'').replace(/\s+/g,' ').trim();
   const parseCoords = t => { const m=t.match(/\((\d{2,3})\|(\d{2,3})\)/); return m?{x:+m[1],y:+m[2]}:null; };
   const getVillageIdFromHref = (el) => {
     const a = el.querySelector('a[href*="screen=info_village"]') || el.querySelector('a[href*="village="]');
@@ -41,9 +44,15 @@
   const listOFF  = [];
   const keyOf = v => v.village_id || `${v.coords.x}|${v.coords.y}`;
 
+  // Pomocné: deduplikace a čistění skupin
+  const uniq = arr => Array.from(new Set(arr));
+  const cleanGroups = (arr) =>
+    uniq(arr.map(norm).filter(Boolean));
+
   // ---- řádek pro DC (prostý text)
   const toLineDC = (v) => {
-    const groupsStr = (v.groups && v.groups.length) ? ` — ${v.groups.join(', ')}` : '';
+    const groups = cleanGroups(v.groups||[]);
+    const groupsStr = groups.length ? ` — ${groups.join(', ')}` : '';
     const idStr = v.village_id ? ` — village_id: ${v.village_id}` : '';
     return `${v.coords.x}|${v.coords.y} — ${v.name}${idStr}${groupsStr}`;
   };
@@ -58,20 +67,19 @@
 
     const village_id = getVillageIdFromHref(nameCell || row) || row.getAttribute('data-id') || null;
     const nameOnly = nameText.replace(/\s*\(\d{2,3}\|\d{2,3}\)\s*K\d{2}\s*$/,'').trim();
-    const send_link = (village_id)
-      ? `game.php?village=${village_id}&screen=place&x=${coords.x}&y=${coords.y}`
-      : `game.php?screen=place&x=${coords.x}&y=${coords.y}`;
 
     // Skupiny: např. "DEFF; Nebezpečí; OFF"
-    const groups = norm(groupsCell?.textContent || '')
-      .split(';')
-      .map(t => norm(t))
-      .filter(Boolean);
+    const groups = cleanGroups(
+      (norm(groupsCell?.textContent || '')
+        .split(';')
+        .map(t => norm(t))
+        .filter(Boolean))
+    );
 
     const hasDEFF = groups.includes('DEFF');
     const hasOFF  = groups.includes('OFF');
 
-    const vObj = {name:nameOnly, coords, village_id, send_link, groups, hasDEFF, hasOFF};
+    const vObj = {name:nameOnly, coords, village_id, groups, hasDEFF, hasOFF};
     all.push(vObj);
     if (hasDEFF) listDEFF.push(vObj);
     if (hasOFF)  listOFF.push(vObj);
@@ -83,7 +91,7 @@
   const unmarked = all.filter(v => !markedMap.has(keyOf(v)));
   const unmarkedCount = unmarked.length;
 
-  // ===== 2) Předpřipravené texty (bez hlaviček – čisté řádky)
+  // ===== 2) Předpřipravené texty (bez hlaviček – čisté řádky) =====
   const txtALL  = all.map(toLineDC).join('\n');
   const txtDEFF = listDEFF.map(toLineDC).join('\n');
   const txtOFF  = listOFF.map(toLineDC).join('\n');
@@ -98,6 +106,7 @@
   <div class="dkg-modal">
     <div class="dkg-header">
       <strong>Skupiny export (DEFF/OFF/Nebezpečí)</strong>
+      <span class="dkg-ver" style="margin-left:8px;font-size:12px;color:#888">${__DK_GROUPS_VER__}</span>
       <button class="dkg-close" title="Zavřít">×</button>
     </div>
 
@@ -184,7 +193,7 @@
     const btn = wrap.querySelector('.dkg-copy-dc');
     const old = btn.textContent;
     try {
-      const text = getTextForMode(currentMode()); // jistota – vždy čerstvě podle filtru
+      const text = getTextForMode(currentMode()); // vždy čerstvě podle filtru
       await copyPlain(text);
       btn.textContent = 'Zkopírováno ✓';
     } catch {
@@ -196,5 +205,7 @@
 
   wrap.querySelector('.dkg-close').onclick = () => wrap.remove();
   wrap.querySelector('.dkg-backdrop').onclick = () => wrap.remove();
-})();
 
+  // Konsolová značka
+  console.log('[DK-groups_export]', __DK_GROUPS_VER__);
+})();
