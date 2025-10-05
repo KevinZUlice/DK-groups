@@ -44,7 +44,8 @@
   // ---- řádek pro DC (prostý text)
   const toLineDC = (v) => {
     const groupsStr = (v.groups && v.groups.length) ? ` — ${v.groups.join(', ')}` : '';
-    return `${v.coords.x}|${v.coords.y} — ${v.name} — [url=${v.send_link}]Send[/url]${groupsStr}`;
+    const idStr = v.village_id ? ` — village_id: ${v.village_id}` : '';
+    return `${v.coords.x}|${v.coords.y} — ${v.name}${idStr}${groupsStr}`;
   };
 
   for (const row of villageRows) {
