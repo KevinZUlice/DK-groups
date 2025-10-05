@@ -29,7 +29,6 @@
   };
 
   const rawRows = Array.from(document.querySelectorAll(sel.rows));
-  // -> Nově: řádek je vesnice pouze pokud v první buňce NAJDEME SOUŘADNICE.
   const villageRows = rawRows.filter(r => {
     const c = r.querySelector(sel.name);
     if (!c) return false;
@@ -40,8 +39,12 @@
   const all = [];
   const listDEFF = [];
   const listOFF  = [];
-  const fmtLine = v => `• [coord]${v.coords.x}|${v.coords.y}[/coord] — ${v.name} — [url=${v.send_link}]Send[/url]`;
   const keyOf = v => v.village_id || `${v.coords.x}|${v.coords.y}`;
+
+  const toLine = (v) => {
+    const groupsStr = (v.groups && v.groups.length) ? ` — ${v.groups.join(', ')}` : '';
+    return `${v.coords.x}|${v.coords.y} — ${v.name} — [url=${v.send_link}]Send[/url]${groupsStr}`;
+  };
 
   for (const row of villageRows) {
     const nameCell = row.querySelector(sel.name);
@@ -49,17 +52,22 @@
 
     const nameText = norm(nameCell?.textContent || '');
     const coords   = parseCoords(nameText);
-    if (!coords) continue; // ochrana: bez souřadnic NENÍ vesnice
+    if (!coords) continue;
 
     const village_id = getVillageIdFromHref(nameCell || row) || row.getAttribute('data-id') || null;
     const nameOnly = nameText.replace(/\s*\(\d{2,3}\|\d{2,3}\)\s*K\d{2}\s*$/,'').trim();
-    const send_link = (village_id) ? `game.php?village=${village_id}&screen=place&x=${coords.x}&y=${coords.y}` : null;
+    const send_link = (village_id) ? `game.php?village=${village_id}&screen=place&x=${coords.x}&y=${coords.y}` : `game.php?screen=place&x=${coords.x}&y=${coords.y}`;
 
-    const tokens = norm(groupsCell?.textContent || '').split(';').map(t=>norm(t)).filter(Boolean);
-    const hasDEFF = tokens.includes('DEFF');
-    const hasOFF  = tokens.includes('OFF');
+    // Seber všechny štítky skupin (např. "DEFF", "OFF", "Nebezpečí", …)
+    const groups = norm(groupsCell?.textContent || '')
+      .split(';')
+      .map(t => norm(t))
+      .filter(Boolean);
 
-    const vObj = {name:nameOnly, coords, village_id, send_link, hasDEFF, hasOFF};
+    const hasDEFF = groups.includes('DEFF');
+    const hasOFF  = groups.includes('OFF');
+
+    const vObj = {name:nameOnly, coords, village_id, send_link, groups, hasDEFF, hasOFF};
     all.push(vObj);
     if (hasDEFF) listDEFF.push(vObj);
     if (hasOFF)  listOFF.push(vObj);
@@ -71,11 +79,11 @@
   const unmarked = all.filter(v => !markedMap.has(keyOf(v)));
   const unmarkedCount = unmarked.length;
 
-  // ===== 2) BBCode pro filtry =====
-  const bbALL  = [`[b]VŠE[/b] [i]${totalVillages}[/i]`, ...all.map(fmtLine)].join('\n');
-  const bbDEFF = [`[b]DEFF (exact)[/b] [i]${listDEFF.length}[/i]`, ...listDEFF.map(fmtLine)].join('\n');
-  const bbOFF  = [`[b]OFF (exact)[/b]  [i]${listOFF.length}[/i]`,  ...listOFF.map(fmtLine)].join('\n');
-  const bbMISS = [`[b]NEOZNAČENÉ[/b] [i]${unmarkedCount}[/i]`,     ...unmarked.map(fmtLine)].join('\n');
+  // ===== 2) TEXTY PRO FILTRY (čisté řádky bez hlaviček/bulletů) =====
+  const txtALL  = all.map(toLine).join('\n');
+  const txtDEFF = listDEFF.map(toLine).join('\n');
+  const txtOFF  = listOFF.map(toLine).join('\n');
+  const txtMISS = unmarked.map(toLine).join('\n');
 
   // ===== 3) POPUP =====
   const OLD = document.getElementById('dk-groups-popup'); if (OLD) OLD.remove();
@@ -85,7 +93,7 @@
   <div class="dkg-backdrop"></div>
   <div class="dkg-modal">
     <div class="dkg-header">
-      <strong>Skupiny export (DEFF/OFF)</strong>
+      <strong>Skupiny export (DEFF/OFF/Nebezpečí)</strong>
       <button class="dkg-close" title="Zavřít">×</button>
     </div>
 
@@ -106,7 +114,7 @@
 
     <textarea class="dkg-ta" spellcheck="false"></textarea>
     <div class="dkg-footer">
-      <span>Řádků v exportu: <b class="dkg-count"></b> <i style="color:#888">(počítají se jen odrážky „•“)</i></span>
+      <span>Řádků v exportu: <b class="dkg-count"></b></span>
     </div>
   </div>`;
   document.body.appendChild(wrap);
@@ -132,15 +140,15 @@
   // ===== 4) Naplnění + počítadlo =====
   const ta  = wrap.querySelector('.dkg-ta');
   const cnt = wrap.querySelector('.dkg-count');
-  const countBullets = txt => txt.split('\n').filter(l => /^\s*•\s/.test(l)).length;
+  const countLines = txt => txt.split('\n').filter(l => l.trim().length>0).length;
 
   const fill = (mode) => {
-    let txt = bbALL;
-    if (mode === 'deff') txt = bbDEFF;
-    else if (mode === 'off') txt = bbOFF;
-    else if (mode === 'miss') txt = bbMISS;
+    let txt = txtALL;
+    if (mode === 'deff') txt = txtDEFF;
+    else if (mode === 'off') txt = txtOFF;
+    else if (mode === 'miss') txt = txtMISS;
     ta.value = txt;
-    cnt.textContent = String(countBullets(txt));
+    cnt.textContent = String(countLines(txt));
   };
   fill('all');
 
